@@ -1,0 +1,562 @@
+// ==UserScript==
+// @name         Bloxd.io Utility Tool
+// @namespace    https://greasyfork.org/en/scripts/565672-bloxd-io-utility-tool
+// @version      4.3
+// @description  Bloxd OP Client - OP Game Utility with Killaura, Bhop, Aimbot, and ESP modules - OVERPOWERED CLIENT
+// @author       H4CK3R
+// @license      MIT
+// @match        https://bloxd.io/*
+// @match        http://bloxd.io/*
+// @match        https://*.bloxd.io/*
+// @match        http://*.bloxd.io/*
+// @match        https://bloxd.io/*
+// @match        http://bloxd.io/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=bloxd.io
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+ 
+(function() {
+  'use strict';
+  
+  // Show alert when script executes
+  alert("Client injected, you must join game for client to load");
+  
+  // Check if running as userscript or standalone
+  const isUserscript = typeof GM_info !== 'undefined' || window.location.protocol === 'file:';
+  
+  const C = { killaura: { on: 0, d: 15, r: 6.5, j: 0.02, k: null }, bhop: { on: 0, k: null }, aimbot: { on: 0, i: 20, s: 0.15, m: 10, k: null }, esp: { on: 0, k: null }, autoclicker: { on: 0, cps: 10, random: 0, k: null } };
+  const S = "slop_cfg", M = "slop_menu_pos";
+  let cfg = JSON.parse(JSON.stringify(C)), menu = null, pos = { x: null, y: null }, lobby = null, btn = null, inLobby = 0, rshift = 0;
+ 
+  const v = (o) => Object.values(o || {});
+  const a = (f, d = null) => { try { return f(); } catch { return d; } };
+  const n = (v) => { const s = v[0] * v[0] + v[1] * v[1] + v[2] * v[2]; return s ? [v[0] / Math.sqrt(s), v[1] / Math.sqrt(s), v[2] / Math.sqrt(s)] : v; };
+  const d2 = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2]; return dx * dx + dy * dy + dz * dz; };
+ 
+  const G = {
+    wp: null, _n: null, bp: null,
+    get n() { if (!this._n && this.bp) this._n = v(this.bp).find(p => p?.entities); return this._n; },
+    init() {
+      if (this.wp) return;
+      const d = Object.getOwnPropertyDescriptors(window);
+      let k = Object.keys(d).find(k => d[k]?.set?.toString().includes("++"));
+      if (!k) k = Object.keys(window).find(k => Array.isArray(window[k]) && typeof window[k].push === "function");
+      if (!k) return;
+      const c = window[k];
+      c.push([[Math.floor(Math.random() * 9999999) + 1], {}, (r) => (this.wp = r)]);
+      this.bp = v(this.fm("nonBlocksClient:")).find(o => typeof o === "object");
+      this._n = null;
+    },
+    fm(s) { if (!this.wp) return null; for (const id in this.wp.m) if (this.wp.m[id]?.toString().includes(s)) return this.wp(id); }
+  };
+ 
+  const ik = () => a(() => { const e = G.n.entities, t = v(e)[2]; return Object.entries(e).find(([, val]) => val === t)?.[0]; });
+  const g = {
+    p: (id) => a(() => G.n.entities.getState(id, "position").position),
+    pl: () => a(() => { const ids = G.n?.bloxd?.getPlayerIds?.(); return ids ? Object.values(ids).map(Number).filter(id => id !== 1) : []; }, []),
+    hg: () => a(() => v(G.n.entities).find(f => typeof f === "function" && f.length === 1 && f.toString().length < 80 && f.toString().includes(").") && !f.toString().includes("opWrapper")), null),
+    sh: (id) => {
+      const getter = g.hg();
+      return getter ? a(() => getter(id), null) : null;
+    },
+    at: () => {
+      const held = g.sh(1);
+      if (!held) return () => {};
+      const attack = held.doAttack || held.breakingItem?.doAttack;
+      return attack ? attack.bind(held) : () => {};
+    },
+    c: () => a(() => G.n.camera, null),
+    sw: () => {
+      try {
+        const ikey = ik();
+        if (!ikey) return;
+        const ms = G.n.entities?.[ikey]?.moveState?.list?.[0];
+        if (ms && typeof ms.setArmsAreSwinging === "function") ms.setArmsAreSwinging();
+        if (ms && "armsAreSwinging" in ms) ms.armsAreSwinging = true;
+        const h = g.sh(1);
+        if (h) {
+          if (h.trySwingBlock) h.trySwingBlock();
+          if (h.trySwingItem) h.trySwingItem();
+          if (h.swing) h.swing();
+        }
+        if (G.n?.inputs?.down?.emit) G.n.inputs.down.emit("primary-fire", true);
+      } catch {}
+    }
+  };
+ 
+  class Mdl {
+    constructor(n, k) { this.n = n; this.k = k; this.on = 0; }
+    en() { if (!this.on) { this.on = 1; this.e(); } }
+    dis() { if (this.on) { this.on = 0; this.d(); } }
+    t() { this.on ? this.dis() : this.en(); }
+    e() {}
+    d() {}
+    u() {}
+  }
+ 
+  class KA extends Mdl {
+    constructor() { super("Killaura", "killaura"); this.l = 0; }
+    e() { this.l = 0; }
+    u() {
+      if (!this.on) return;
+      const now = Date.now();
+      const bd = cfg.killaura.d;
+      const j = bd * (cfg.killaura.j || 0.02) * (Math.random() - 0.5);
+      const ed = Math.max(25, bd + j);
+      if (now - this.l < ed) return;
+      this.l = now;
+      const pp = g.p(1);
+      if (!pp) return;
+      const kr = cfg.killaura.r;
+      const krs = kr * kr;
+      g.pl().forEach((id, idx) => {
+        const ep = g.p(id);
+        if (!ep || d2(pp, ep) > krs) return;
+        const vec = n([ep[0] - pp[0], ep[1] - pp[1], ep[2] - pp[2]]);
+        try {
+          const at = g.at();
+          if (at && typeof at === "function") {
+            at(vec, id.toString(), "BodyMesh");
+            const sh = g.sh(1);
+            if (sh && sh.trySwingBlock) sh.trySwingBlock();
+            const ikey = ik();
+            if (ikey) {
+              const ms = G.n.entities?.[ikey]?.moveState?.list?.[0];
+              if (ms && ms.setArmsAreSwinging) ms.setArmsAreSwinging();
+            }
+          }
+        } catch (e) {
+          console.debug("[KILLAURA] Killaura attack failed:", e);
+          console.error("[KILLAURA] Error details:", e.message, e.stack);
+        }
+      });
+    }
+  }
+ 
+  class BH extends Mdl {
+    constructor() { super("Bhop", "bhop"); this.i = null; this.lj = 0; this.lg = 0; }
+    e() {
+      if (this.i) return;
+      this.i = setInterval(() => {
+        if (!this.on) return;
+        try {
+          const ikey = ik();
+          if (!ikey) return;
+          const ms = G.n.entities?.[ikey]?.moveState?.list?.[0];
+          const mv = G.n.entities?.[ikey]?.movement?.list?.[0];
+          if (!ms || !mv) return;
+          const vals = v(G.n);
+          if (vals[30]?.[1]?.[1]?._isAlive === 0) return;
+          if (ms.crouching || (ms.speed && ms.speed < 0.05) || mv._flying) {
+            if (G.n?.inputs?.state) G.n.inputs.state.jump = 0;
+            return;
+          }
+          const og = mv.isOnGround?.() ?? 0;
+          const n = Date.now();
+          if (og && n - this.lg >= 50 + Math.random() * 30) {
+            if (G.n?.inputs?.state) G.n.inputs.state.jump = 1;
+            this.lj = n;
+            this.lg = n;
+          } else if (!og && G.n?.inputs?.state) {
+            G.n.inputs.state.jump = 0;
+          }
+        } catch {}
+      }, 5);
+    }
+    d() {
+      if (this.i) { clearInterval(this.i); this.i = null; }
+      if (G.n?.inputs?.state) G.n.inputs.state.jump = 0;
+    }
+  }
+ 
+  class AB extends Mdl {
+    constructor() { super("Aimbot", "aimbot"); this.i = null; this.l = 0; }
+    e() {
+      if (this.i) return;
+      this.i = setInterval(() => {
+        if (!this.on) return;
+        const n = Date.now();
+        if (n - this.l < cfg.aimbot.i) return;
+        this.l = n;
+        try {
+          const p = g.p(1), c = g.c();
+          if (!p || !c) return;
+          let b = { id: null, d: Infinity, h: 0, p: 0 };
+          g.pl().forEach(id => {
+            const ep = g.p(id);
+            if (!ep) return;
+            const l = a(() => G.n.entities.getState(id, "genericLifeformState"), null);
+            if (l && l.isAlive === 0) return;
+            const dx = ep[0] - p[0], dy = ep[1] - p[1], dz = ep[2] - p[2];
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (!isFinite(dist) || dist < 0.1 || dist > cfg.aimbot.m) return;
+            if (dist < b.d) b = { id, d: dist, h: Math.atan2(dx, dz), p: -Math.asin(dy / dist) };
+          });
+          if (!b.id) return;
+          const sm = cfg.aimbot.s || 0.15;
+          let dh = b.h - c.heading;
+          while (dh > Math.PI) dh -= 2 * Math.PI;
+          while (dh < -Math.PI) dh += 2 * Math.PI;
+          c.heading += dh * sm;
+          c.pitch += (b.p - c.pitch) * sm;
+        } catch {}
+      }, Math.max(5, cfg.aimbot.i));
+    }
+    d() { if (this.i) { clearInterval(this.i); this.i = null; } }
+  }
+ 
+  class ESP extends Mdl {
+    constructor() { super("ESP", "esp"); this.i = null; }
+    e() {
+      this.up(1);
+      if (this.i) return;
+      this.i = setInterval(() => { if (this.on) this.up(1); }, 500);
+    }
+    d() { if (this.i) { clearInterval(this.i); this.i = null; } this.up(0); }
+    up(s) {
+      if (!G.n) return;
+      const r = v(G.n)[12];
+      if (!r) return;
+      const tm = v(r).find(v => v?.thinMeshes)?.thinMeshes;
+      if (Array.isArray(tm)) tm.forEach(i => { const m = i?.meshVariations?.__DEFAULT__?.mesh; if (m && typeof m.renderingGroupId === "number") m.renderingGroupId = s ? 2 : 0; });
+    }
+  }
+ 
+  class AC extends Mdl {
+    constructor() { super("Autoclicker", "autoclicker"); this.i = null; this.h = 0; this.mdh = null; this.muh = null; }
+    pc() {
+      if (!this.on || !this.h) return;
+      try {
+        if (G.n?.inputs?.down?.emit) {
+          G.n.inputs.down.emit("primary-fire", true);
+          setTimeout(() => {
+            if (G.n?.inputs?.up?.emit) G.n.inputs.up.emit("primary-fire", true);
+          }, 10);
+        }
+        g.sw();
+      } catch {}
+    }
+    tick() {
+      if (!this.on || !this.h) {
+        if (this.i) { clearInterval(this.i); this.i = null; }
+        return;
+      }
+      this.pc();
+      if (cfg.autoclicker.random === 1) {
+        const cps = cfg.autoclicker.cps || 10;
+        const varp = 0.4;
+        const min = cps * (1 - varp);
+        const max = cps * (1 + varp);
+        const rcps = min + Math.random() * (max - min);
+        const iv = Math.max(1, Math.floor(1000 / rcps));
+        if (this.i) {
+          clearInterval(this.i);
+          this.i = null;
+        }
+        this.i = setTimeout(() => this.tick(), iv);
+      }
+    }
+    e() {
+      if (this.mdh || this.muh) return;
+      this.mdh = (e) => {
+        if (!this.on || e.button !== 0 || this.h || e.target.closest("#slop-menu") || e.target.closest("#slop-btn")) return;
+        this.h = 1;
+        this.pc();
+        const cps = cfg.autoclicker.cps || 10;
+        const rnd = cfg.autoclicker.random === 1;
+        let iv = 1000 / cps;
+        if (rnd) {
+          const varp = 0.4;
+          const min = cps * (1 - varp);
+          const max = cps * (1 + varp);
+          const rcps = min + Math.random() * (max - min);
+          iv = 1000 / rcps;
+        }
+        iv = Math.max(1, Math.floor(iv));
+        if (rnd) {
+          this.i = setTimeout(() => this.tick(), iv);
+        } else {
+          this.i = setInterval(() => this.pc(), iv);
+        }
+      };
+      this.muh = (e) => {
+        if (!this.on || e.button !== 0 || !this.h) return;
+        this.h = 0;
+        if (this.i) { clearInterval(this.i); clearTimeout(this.i); this.i = null; }
+        if (G.n?.inputs?.up?.emit) G.n.inputs.up.emit("primary-fire", true);
+      };
+      document.addEventListener("mousedown", this.mdh);
+      document.addEventListener("mouseup", this.muh);
+      window.addEventListener("mouseup", this.muh);
+    }
+    d() {
+      this.h = 0;
+      if (this.i) { clearInterval(this.i); clearTimeout(this.i); this.i = null; }
+      if (this.mdh) { document.removeEventListener("mousedown", this.mdh); this.mdh = null; }
+      if (this.muh) { document.removeEventListener("mouseup", this.muh); window.removeEventListener("mouseup", this.muh); this.muh = null; }
+      if (G.n?.inputs?.up?.emit) G.n.inputs.up.emit("primary-fire", true);
+    }
+  }
+ 
+  const mods = [new KA(), new BH(), new AB(), new ESP(), new AC()];
+  let loop = null;
+ 
+  const sl = () => { try { localStorage.setItem(S, JSON.stringify(cfg)); } catch {} };
+  const ll = () => { try { const s = localStorage.getItem(S); if (s) Object.assign(cfg, JSON.parse(s)); const p = localStorage.getItem(M); if (p) { const pp = JSON.parse(p); if (pp.x !== null) pos.x = pp.x; if (pp.y !== null) pos.y = pp.y; } } catch {} };
+  const sp = () => { try { localStorage.setItem(M, JSON.stringify(pos)); } catch {} };
+ 
+  const mk = () => {
+    if (!document.body) { setTimeout(mk, 100); return null; }
+    const ex = document.getElementById("slop-menu");
+    if (ex) ex.remove();
+    const m = document.createElement("div");
+    m.id = "slop-menu";
+    const ix = pos.x !== null ? pos.x : (window.innerWidth / 2 - 275);
+    const iy = pos.y !== null ? pos.y : (window.innerHeight / 2 - 250);
+    m.style.cssText = `position:fixed;top:${iy}px;left:${ix}px;width:550px;background:rgba(20,20,30,0.98);border:2px solid #4ade80;border-radius:8px;padding:0;z-index:9999999;font-family:'Segoe UI',sans-serif;color:#fff;display:block;box-shadow:0 0 30px rgba(74,222,128,0.5);backdrop-filter:blur(10px);user-select:none;`;
+    const h = document.createElement("div");
+    h.style.cssText = `padding:15px 20px;cursor:move;border-bottom:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.1);display:flex;align-items:center;justify-content:space-between;`;
+    const t = document.createElement("div");
+    t.textContent = "AI Slop";
+    t.style.cssText = `font-size:24px;font-weight:bold;color:#4ade80;flex:1;text-align:center;pointer-events:none;`;
+    h.appendChild(t);
+    m.appendChild(h);
+    const c = document.createElement("div");
+    c.style.cssText = `padding:20px;max-height:70vh;overflow-y:auto;`;
+    mods.forEach(md => {
+      const r = document.createElement("div");
+      r.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px;margin:5px 0;background:rgba(255,255,255,0.05);border-radius:4px;`;
+      const ls = document.createElement("div");
+      ls.style.cssText = `display:flex;align-items:center;gap:10px;flex:1;`;
+      const lb = document.createElement("span");
+      lb.textContent = md.n;
+      lb.style.cursor = "context-menu";
+      lb.oncontextmenu = (e) => { e.preventDefault(); const sm = r.querySelector(".submenu"); if (sm) sm.style.display = sm.style.display === "none" ? "block" : "none"; };
+      const tg = document.createElement("button");
+      tg.textContent = md.on ? "ON" : "OFF";
+      tg.style.cssText = `padding:5px 15px;border:none;border-radius:4px;background:${md.on ? "#4ade80" : "#ef4444"};color:white;cursor:pointer;font-weight:bold;`;
+      tg.onclick = () => { md.t(); cfg[md.k].on = md.on ? 1 : 0; tg.textContent = md.on ? "ON" : "OFF"; tg.style.background = md.on ? "#4ade80" : "#ef4444"; sl(); };
+      // Store reference to button for updates
+      md._btn = tg;
+      const kb = document.createElement("input");
+      kb.type = "text";
+      kb.value = cfg[md.k]?.k || "None";
+      kb.style.cssText = `width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;text-align:center;`;
+      kb.onclick = () => { kb.value = "Press key..."; const h = (e) => { cfg[md.k].k = e.code; kb.value = e.code; sl(); document.removeEventListener("keydown", h); }; document.addEventListener("keydown", h, { once: 1 }); };
+      ls.appendChild(lb);
+      ls.appendChild(tg);
+      ls.appendChild(kb);
+      r.appendChild(ls);
+      const sm = document.createElement("div");
+      sm.className = "submenu";
+      sm.style.cssText = `display:none;width:100%;margin-top:10px;padding:10px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid rgba(74,222,128,0.3);`;
+      if (md.k === "killaura") {
+        const dr = document.createElement("div");
+        dr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        dr.innerHTML = `<span>Delay:</span><input type="number" value="${cfg.killaura.d}" min="1" max="1000" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        dr.querySelector("input").onchange = (e) => { cfg.killaura.d = parseInt(e.target.value) || 15; sl(); };
+        sm.appendChild(dr);
+        const rr = document.createElement("div");
+        rr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        rr.innerHTML = `<span>Range:</span><input type="number" value="${cfg.killaura.r}" min="1" max="20" step="0.1" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        rr.querySelector("input").onchange = (e) => { cfg.killaura.r = parseFloat(e.target.value) || 6.5; sl(); };
+        sm.appendChild(rr);
+        const jr = document.createElement("div");
+        jr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        jr.innerHTML = `<span>Jitter:</span><input type="number" value="${cfg.killaura.j || 0.02}" min="0" max="1" step="0.01" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        jr.querySelector("input").onchange = (e) => { cfg.killaura.j = parseFloat(e.target.value) || 0.02; sl(); };
+        sm.appendChild(jr);
+      } else if (md.k === "aimbot") {
+        const sr = document.createElement("div");
+        sr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        sr.innerHTML = `<span>Smoothing:</span><input type="number" value="${cfg.aimbot.s}" min="0.01" max="1" step="0.01" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        sr.querySelector("input").onchange = (e) => { cfg.aimbot.s = parseFloat(e.target.value) || 0.15; sl(); };
+        sm.appendChild(sr);
+        const mr = document.createElement("div");
+        mr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        mr.innerHTML = `<span>Max Distance:</span><input type="number" value="${cfg.aimbot.m}" min="1" max="50" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        mr.querySelector("input").onchange = (e) => { cfg.aimbot.m = parseInt(e.target.value) || 10; sl(); };
+        sm.appendChild(mr);
+      } else if (md.k === "autoclicker") {
+        const cr = document.createElement("div");
+        cr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;";
+        cr.innerHTML = `<span>CPS:</span><input type="number" value="${cfg.autoclicker.cps || 10}" min="1" max="30" style="width:80px;padding:3px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:white;">`;
+        cr.querySelector("input").onchange = (e) => { cfg.autoclicker.cps = parseInt(e.target.value) || 10; sl(); };
+        sm.appendChild(cr);
+        const rr = document.createElement("div");
+        rr.style.cssText = "display:flex;justify-content:space-between;margin:5px 0;align-items:center;";
+        const rl = document.createElement("span");
+        rl.textContent = "Randomized CPS:";
+        const rc = document.createElement("input");
+        rc.type = "checkbox";
+        rc.checked = cfg.autoclicker.random === 1;
+        rc.style.cssText = "width:20px;height:20px;cursor:pointer;";
+        rc.onchange = (e) => { cfg.autoclicker.random = e.target.checked ? 1 : 0; sl(); };
+        rr.appendChild(rl);
+        rr.appendChild(rc);
+        sm.appendChild(rr);
+      }
+      r.appendChild(sm);
+      c.appendChild(r);
+    });
+    const cb = document.createElement("button");
+    cb.textContent = "Close (Insert / Right Shift)";
+    cb.style.cssText = `width:100%;padding:10px;margin-top:15px;background:#ef4444;border:none;border-radius:4px;color:white;cursor:pointer;font-weight:bold;`;
+    cb.onclick = () => tm();
+    c.appendChild(cb);
+    m.appendChild(c);
+    document.body.appendChild(m);
+    let dg = 0, ox = 0, oy = 0;
+    const sd = (e) => { if (["INPUT", "BUTTON"].includes(e.target.tagName)) return; dg = 1; const r = m.getBoundingClientRect(); ox = (e.touches?.[0]?.clientX ?? e.clientX) - r.left; oy = (e.touches?.[0]?.clientY ?? e.clientY) - r.top; document.addEventListener("mousemove", md); document.addEventListener("mouseup", ed); e.preventDefault(); };
+    const md = (e) => { if (!dg) return; const x = Math.max(0, Math.min((e.touches?.[0]?.clientX ?? e.clientX) - ox, window.innerWidth - m.offsetWidth)); const y = Math.max(0, Math.min((e.touches?.[0]?.clientY ?? e.clientY) - oy, window.innerHeight - m.offsetHeight)); m.style.left = `${x}px`; m.style.top = `${y}px`; m.style.transform = "none"; pos.x = x; pos.y = y; sp(); };
+    const ed = () => { dg = 0; document.removeEventListener("mousemove", md); document.removeEventListener("mouseup", ed); };
+    h.addEventListener("mousedown", sd);
+    h.addEventListener("touchstart", sd, { passive: 0 });
+    return m;
+  };
+ 
+  const ub = () => {
+    if (!menu) return;
+    mods.forEach(md => {
+      if (md._btn) {
+        md._btn.textContent = md.on ? "ON" : "OFF";
+        md._btn.style.background = md.on ? "#4ade80" : "#ef4444";
+      }
+    });
+  };
+ 
+  const tm = () => {
+    if (!menu) menu = mk();
+    if (!menu) return;
+    const vis = menu.style.display !== "none";
+    menu.style.display = vis ? "none" : "block";
+    if (!vis) {
+      ub();
+    }
+  };
+ 
+  const sm = () => { if (!menu) menu = mk(); if (menu) { menu.style.display = "block"; ub(); } };
+ 
+  const hk = (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") { if (e.code === "Insert") { e.preventDefault(); tm(); } return; }
+    if (e.code === "Insert") { e.preventDefault(); tm(); return; }
+    mods.forEach(md => { if (cfg[md.k]?.k === e.code) { md.t(); cfg[md.k].on = md.on ? 1 : 0; sl(); ub(); } });
+  };
+ 
+  const hrs = (e) => {
+    if (e.code === "ShiftRight" || (e.key === "Shift" && e.location === 2)) {
+      if (e.type === "keydown" && !rshift) { rshift = 1; e.preventDefault(); tm(); } else if (e.type === "keyup") rshift = 0;
+    }
+  };
+ 
+  const stb = () => {
+    if (btn) return;
+    if (!document.body) { setTimeout(stb, 100); return; }
+    btn = document.createElement("button");
+    btn.textContent = "☰";
+    btn.id = "slop-btn";
+    btn.style.cssText = `position:fixed;top:10px;right:10px;width:40px;height:40px;border:2px solid #4ade80;border-radius:6px;background:rgba(20,20,30,0.95);color:#4ade80;cursor:pointer;font-size:20px;font-weight:bold;z-index:9999999;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:all 0.2s ease;`;
+    btn.onmouseenter = () => { btn.style.background = "rgba(74,222,128,0.2)"; btn.style.transform = "scale(1.1)"; };
+    btn.onmouseleave = () => { btn.style.background = "rgba(20,20,30,0.95)"; btn.style.transform = "scale(1)"; };
+    btn.onclick = () => tm();
+    document.body.appendChild(btn);
+  };
+ 
+  const cli = () => {
+    if (lobby) return;
+    if (!document.body) { setTimeout(cli, 100); return; }
+    lobby = document.createElement("div");
+    lobby.id = "slop-lobby";
+    lobby.textContent = "Waiting to join lobby";
+    lobby.style.cssText = `position:fixed;top:0;left:0;padding:8px 14px;background:rgba(20,20,30,0.95);border:2px solid #4ade80;border-top:none;border-left:none;border-radius:0 0 8px 0;color:#4ade80;font-size:12px;font-family:'Segoe UI',sans-serif;font-weight:500;z-index:9999999;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.4);pointer-events:none;`;
+    document.body.appendChild(lobby);
+  };
+ 
+  const ul = () => {
+    if (!lobby) return;
+    try {
+      let il = 0;
+      if (G.n) {
+        try {
+          const p = g.p(1);
+          il = p && Array.isArray(p) && p.length === 3 && isFinite(p[0]) && isFinite(p[1]) && isFinite(p[2]);
+        } catch {}
+      }
+      if (il) {
+        if (!inLobby) inLobby = 1;
+        lobby.style.display = "none";
+      } else {
+        if (inLobby) inLobby = 0;
+        lobby.style.display = "block";
+        lobby.style.visibility = "visible";
+        lobby.style.opacity = "1";
+      }
+    } catch {
+      inLobby = 0;
+      if (lobby) { lobby.style.display = "block"; lobby.style.visibility = "visible"; lobby.style.opacity = "1"; }
+    }
+  };
+ 
+  const init = () => {
+    try {
+      G.init();
+      if (!G.n) { setTimeout(init, 500); return; }
+      ll();
+      // Sync module states with config after loading
+      mods.forEach(md => {
+        if (cfg[md.k]?.on === 1 && !md.on) {
+          md.en();
+        } else if (cfg[md.k]?.on === 0 && md.on) {
+          md.dis();
+        }
+      });
+      if (!loop) loop = setInterval(() => { mods.forEach(m => { if (m.on && m.u) m.u(); }); }, 16);
+      if (!window._slop) {
+        document.addEventListener("keydown", hk);
+        document.addEventListener("keydown", hrs);
+        document.addEventListener("keyup", hrs);
+        window._slop = 1;
+      }
+      stb();
+      cli();
+      setInterval(() => ul(), 500);
+      console.log("%c[AI Slop] Ready!", "color:#4ade80;font-weight:bold");
+      setTimeout(() => { if (!menu || menu.style.display === "none") sm(); }, 1500);
+    } catch (e) {
+      console.error("[AI Slop] Error:", e);
+      setTimeout(init, 1000);
+    }
+  };
+ 
+  window.Slop = { cfg, mods, tm, sm, init };
+  
+  // Wait for DOM to be ready (works for both userscript and F12 console)
+  const startInit = () => {
+    // Wait for body to exist
+    if (document.body) {
+      init();
+    } else {
+      // Retry if body doesn't exist yet
+      const checkBody = setInterval(() => {
+        if (document.body) {
+          clearInterval(checkBody);
+          init();
+        }
+      }, 100);
+      // Stop checking after 10 seconds
+      setTimeout(() => clearInterval(checkBody), 10000);
+    }
+  };
+  
+  // Start initialization - works for both userscript and console
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startInit);
+  } else if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    startInit();
+  } else {
+    window.addEventListener('load', startInit);
+    // Fallback if load event already fired
+    setTimeout(startInit, 100);
+  }
+})();
